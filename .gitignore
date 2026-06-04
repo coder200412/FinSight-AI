@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/secrets.toml
+streamlit*.log
+streamlit-dashboard.png
+.env
+venv/
+.venv/
+

@@ -1,0 +1,11 @@
+streamlit>=1.40
+streamlit-autorefresh>=1.0.1
+yfinance>=0.2.50
+pandas>=2.1
+numpy>=1.26
+plotly>=5.20
+scikit-learn>=1.4
+scipy>=1.11
+feedparser>=6.0
+requests>=2.31
+pytest>=8.0
