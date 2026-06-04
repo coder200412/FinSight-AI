@@ -276,6 +276,53 @@ def refresh_time_label(tz: str = "UTC") -> str:
     return pd.Timestamp.now(tz=tz).strftime("%I:%M:%S %p %Z")
 
 
+def render_landing_page(active_preset: dict[str, Any]) -> None:
+    st.markdown(
+        f"""
+        <div style="padding: 2.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); margin-bottom: 2rem;">
+            <div style="display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem;">
+                <span style="display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-sm); background: var(--gradient-primary); color: white; font-weight: 900; font-size: 1.1rem; box-shadow: 0 4px 12px rgba(13,148,136,0.3);">FS</span>
+                <h1 style="margin: 0; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 900; font-size: 2.2rem; letter-spacing: -0.02em;">FinSight AI</h1>
+            </div>
+            <p style="color: var(--muted); font-size: 1.05rem; margin-top: 0.5rem; margin-bottom: 1.8rem; line-height: 1.6;">
+                Welcome to FinSight AI, a deployment-ready market intelligence dashboard. Select a preset company from the active market or enter a custom ticker symbol below to begin real-time data analysis, neural forecasting, sentiment scoring, and AI financial reasoning.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### 🔍 Select a Company to Analyze")
+    
+    presets = active_preset.get("default_tickers", [])
+    options = presets + ["Custom Ticker..."]
+    
+    selected_option = st.selectbox(
+        "Choose a stock from the active country/preset list",
+        options=options,
+        index=0,
+        key="landing_stock_select"
+    )
+    
+    ticker_input = ""
+    if selected_option == "Custom Ticker...":
+        ticker_input = st.text_input("Enter stock ticker symbol (e.g., AAPL, RELIANCE.NS, BP.L)", placeholder="e.g. NVDA").strip()
+    
+    if st.button("Analyze Stock 📈", type="primary", use_container_width=True):
+        final_ticker = ""
+        if selected_option == "Custom Ticker...":
+            if not ticker_input:
+                st.warning("Please enter a custom ticker symbol.")
+                return
+            final_ticker = normalize_ticker(ticker_input, active_preset["suffix"])
+        else:
+            final_ticker = selected_option
+            
+        if final_ticker:
+            st.session_state["selected_ticker"] = final_ticker
+            st.rerun()
+
+
 with st.sidebar:
     st.markdown(
         f"""
@@ -290,49 +337,77 @@ with st.sidebar:
     market_name = st.selectbox("🌍 Select Market / Country", list(MARKET_PRESETS.keys()), index=0)
     active_preset = MARKET_PRESETS[market_name]
     suffix = active_preset["suffix"]
-    default_ticker = active_preset["default_ticker"]
     default_benchmark = active_preset["benchmark"]
     market_tz = active_preset.get("timezone", "UTC")
 
-    raw_ticker = st.text_input("Stock symbol", value=default_ticker)
-    selected_ticker = normalize_ticker(raw_ticker, suffix)
-    period = st.selectbox("History period", PERIOD_OPTIONS, index=2)
-    benchmark = st.text_input("Benchmark", value=default_benchmark)
-    use_finbert = st.checkbox("Use FinBERT when installed", value=False)
-    auto_refresh = st.checkbox("Auto live refresh", value=True)
-    refresh_interval = st.slider(
-        "Refresh every",
-        min_value=15,
-        max_value=120,
-        value=30,
-        step=15,
-        disabled=not auto_refresh,
-    )
-    if "manual_refresh_nonce" not in st.session_state:
-        st.session_state["manual_refresh_nonce"] = "initial"
-    if st.button("Refresh now"):
-        st.session_state["manual_refresh_nonce"] = str(time.time())
+    if "selected_ticker" not in st.session_state:
+        st.session_state["selected_ticker"] = None
+    if "current_market" not in st.session_state:
+        st.session_state["current_market"] = market_name
 
-    live_refresh_count = 0
-    if auto_refresh:
-        live_refresh_count = st_autorefresh(
-            interval=refresh_interval * 1000,
-            key="live_auto_refresh",
+    if st.session_state["current_market"] != market_name:
+        st.session_state["current_market"] = market_name
+        st.session_state["selected_ticker"] = None
+        st.rerun()
+
+    selected_ticker = st.session_state["selected_ticker"]
+
+    if selected_ticker:
+        if st.sidebar.button("🔄 Change Stock / Company", use_container_width=True):
+            st.session_state["selected_ticker"] = None
+            st.rerun()
+
+        period = st.selectbox("History period", PERIOD_OPTIONS, index=2)
+        benchmark = st.text_input("Benchmark", value=default_benchmark)
+        use_finbert = st.checkbox("Use FinBERT when installed", value=False)
+        auto_refresh = st.checkbox("Auto live refresh", value=True)
+        refresh_interval = st.slider(
+            "Refresh every",
+            min_value=15,
+            max_value=120,
+            value=30,
+            step=15,
+            disabled=not auto_refresh,
         )
+        if "manual_refresh_nonce" not in st.session_state:
+            st.session_state["manual_refresh_nonce"] = "initial"
+        if st.button("Refresh now"):
+            st.session_state["manual_refresh_nonce"] = str(time.time())
 
-    refresh_token = f"{live_refresh_count}-{st.session_state['manual_refresh_nonce']}"
-    news_refresh_token = f"{int(time.time() // max(refresh_interval * 10, 300))}-{st.session_state['manual_refresh_nonce']}"
-    st.markdown(
-        f"""
-        <div class="live-status{' ' if auto_refresh else ' off'}">
-            <strong>{'Auto live refresh ON' if auto_refresh else 'Auto live refresh OFF'}</strong>
-            Last checked: {safe_text(refresh_time_label(market_tz))}<br>
-            Interval: {refresh_interval if auto_refresh else 'manual'} seconds
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        live_refresh_count = 0
+        if auto_refresh:
+            live_refresh_count = st_autorefresh(
+                interval=refresh_interval * 1000,
+                key="live_auto_refresh",
+            )
+
+        refresh_token = f"{live_refresh_count}-{st.session_state['manual_refresh_nonce']}"
+        news_refresh_token = f"{int(time.time() // max(refresh_interval * 10, 300))}-{st.session_state['manual_refresh_nonce']}"
+        st.markdown(
+            f"""
+            <div class="live-status{' ' if auto_refresh else ' off'}">
+                <strong>{'Auto live refresh ON' if auto_refresh else 'Auto live refresh OFF'}</strong>
+                Last checked: {safe_text(refresh_time_label(market_tz))}<br>
+                Interval: {refresh_interval if auto_refresh else 'manual'} seconds
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        period = "6mo"
+        benchmark = default_benchmark
+        use_finbert = False
+        auto_refresh = False
+        refresh_interval = 30
+        refresh_token = "static"
+        news_refresh_token = "static"
+
     st.caption(DISCLAIMER)
+
+# If no stock is selected, show landing page and stop
+if not selected_ticker:
+    render_landing_page(active_preset)
+    st.stop()
 
 try:
     history = cached_history(selected_ticker, period, refresh_token)
@@ -363,7 +438,14 @@ render_header(
 page = st.tabs(["Dashboard", "Company Spotlight", "Market Watch", "Prediction", "News", "Portfolio", "Risk", "Chatbot"])
 
 with page[0]:  # Dashboard
-    section_title("Dashboard", live_info.get("name") or selected_ticker)
+    col_title, col_switch = st.columns([3, 1])
+    with col_title:
+        section_title("Dashboard", live_info.get("name") or selected_ticker)
+    with col_switch:
+        st.markdown("<div style='height: 1.5rem;'></div>", unsafe_allow_html=True)
+        if st.button("🔄 Change Stock / Company", key="dash_reset_btn_2", use_container_width=True):
+            st.session_state["selected_ticker"] = None
+            st.rerun()
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         metric_card("Current Price", money(current_price, currency), "Live quote")
